@@ -6,6 +6,7 @@ from pandas import *
 import matplotlib.pyplot as plt
 import numpy as np
 from math import *
+import glob
 
 # 楕円体
 ELLIPSOID_GRS80 = 1 # GRS80
@@ -40,7 +41,7 @@ def vincenty_inverse(lat1, lon1, lat2, lon2, ellipsoid=None):
 
     # 差異が無ければ0.0を返す
     if lat1 == lat2 and lon1 == lon2:
-        return s
+        return 0.0
 
     # 計算時に必要な長軸半径(a)と扁平率(ƒ)を定数から取得し、短軸半径(b)を算出する
     # 楕円体が未指定の場合はGRS80の値を用いる
@@ -117,7 +118,7 @@ def Straight(x,y,x1,y1):
 #'lfour_20190821-20190822.csv'
 #lnc,sec = Straight(34.369671,132.343920,34.17,132.36)
 
-filename = input("csv file name :")
+#filename = input("csv file name :")
 #slat = input("Start latitube :")
 #slon = input("Start longitube :")
 slat = 34.369671
@@ -133,21 +134,38 @@ erange = input("range(about 10 km per degree) :")
 elat = float(elat)
 elon = float(elon)
 erange = float(erange)
-lnc,sec = Straight(slat,slon,elat,elon)
+lnc,sec = Straight(slon,slat,elon,elat)
 
 
 #df = pd.read_csv('lfour_20190821-20190822.csv' ,encoding="utf-8_sig")
-df = pd.read_csv(filename ,encoding="utf-8_sig")
+#df = pd.read_csv(filename ,encoding="utf-8_sig")
 #print(df.columns)
 #print(df[' lat'])
+# pythonフォルダ内にあるcsvファイルの一覧を取得
+files = glob.glob("*.csv")
+print(files)
+# 全てのCSVファイルを読み込み、dfに入れる（keyはファイル名）
+list = []
+for file in files:
+    list.append(pd.read_csv(file,encoding="utf-8_sig"))
 
+df = concat(list, sort=False)
 
 x = df[' lat']
 y = df[' lon']
-tnt = df[(df[' lat'] > 34) & (df[' lat'] < 34.5) & (df[' lon'] > 132) & (df[' lon'] < 134)&(abs(lnc*df[' lat']-1*df[' lon']+sec)/(lnc**2+(-1)**2)**(1/2)<= erange)]
+tnt = df[(df[' lat'] > 34) & (df[' lat'] < 34.5) & (df[' lon'] > 132) & (df[' lon'] < 134)&(abs(lnc*df[' lon']-1*df[' lat']+sec)/(lnc**2+(-1)**2)**(1/2)<= erange)]
 xt = tnt[' lat']
 yt = tnt[' lon']
 rt=tnt[' rssi']
+
+#図１
+plt.subplot(1, 2, 1)
+plt.ylabel("latitude")
+plt.xlabel("longitude")
+plt.scatter(slon, slat, alpha=1, color="Black", linewidths="1")
+plt.scatter(yt, xt, alpha=0.1, color="Blue", linewidths="1")
+y2 = (lnc * yt) + sec
+plt.plot(yt,y2)
 
 d = []
 lat1 = 34.369598
@@ -156,8 +174,9 @@ for (xt,yt) in zip(xt, yt):
     distance = vincenty_inverse(lat1, lon1, xt, yt, 1)
     d.append(distance)
 
+#図２
+plt.subplot(1, 2, 2)
 plt.xlabel("distance")
 plt.ylabel("rssi")
-plt.scatter(d,rt,alpha=0.1,color="Blue",linewidths="1")
-
+plt.scatter(d, rt, alpha=0.1, color="Red", linewidths="1")
 plt.show()
