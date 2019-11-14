@@ -30,28 +30,22 @@ ITERATION_LIMIT = 1000
 '''
 Vincenty法(逆解法)
 2地点の座標(緯度経度)から、距離と方位角を計算する
-:param lat1: 始点の緯度
-:param lon1: 始点の経度
-:param lat2: 終点の緯度
-:param lon2: 終点の経度
-:param ellipsoid: 楕円体
-:return: 距離と方位角
 '''
-def vincenty_inverse(lat1, lon1, lat2, lon2, ellipsoid=None):
+def vincenty_inverse(slon, slat, elon, elat, ellipsoid=None):
 
     # 差異が無ければ0.0を返す
-    if lat1 == lat2 and lon1 == lon2:
-        return 0.0
+    if slat == elat and slon == elon:
+        return None
 
     # 計算時に必要な長軸半径(a)と扁平率(ƒ)を定数から取得し、短軸半径(b)を算出する
     # 楕円体が未指定の場合はGRS80の値を用いる
     a, ƒ = GEODETIC_DATUM.get(ellipsoid, GEODETIC_DATUM.get(ELLIPSOID_GRS80))
     b = (1 - ƒ) * a
 
-    φ1 = radians(lat1)
-    φ2 = radians(lat2)
-    λ1 = radians(lon1)
-    λ2 = radians(lon2)
+    φ1 = radians(slat)
+    φ2 = radians(elat)
+    λ1 = radians(slon)
+    λ2 = radians(elon)
 
     # 更成緯度(補助球上の緯度)
     U1 = atan((1 - ƒ) * tan(φ1))
@@ -99,84 +93,269 @@ def vincenty_inverse(lat1, lon1, lat2, lon2, ellipsoid=None):
     # 2点間の楕円体上の距離
     s = b * A * (σ - Δσ)
 
-    # 各点における方位角
-    α1 = atan2(cosU2 * sinλ, cosU1 * sinU2 - sinU1 * cosU2 * cosλ)
-    α2 = atan2(cosU1 * sinλ, -sinU1 * cosU2 + cosU1 * sinU2 * cosλ) + pi
-
-    if α1 < 0:
-        α1 = α1 + pi * 2
-
     return s
 
-def Straight(x,y,x1,y1):
-    Lnclination = (y1 - y)/(x1 - x)
-    Section = (x1*y - x*y1)/(x1 - x)
-    return Lnclination,Section
+def Straight(x,y,x1,y1):#y=ax+b
+    a = (y1 - y)/(x1 - x)
+    b = (x1*y - x*y1)/(x1 - x)
+    return a,b
 
-#d=abs(ax+by+c)/(a**2+b**2)**(1/2)
-
-#'lfour_20190821-20190822.csv'
-#lnc,sec = Straight(34.369671,132.343920,34.17,132.36)
-
-#filename = input("csv file name :")
-#slat = input("Start latitube :")
-#slon = input("Start longitube :")
-slat = 34.369671
-slon = 132.3443
-print("Start latitube :", slat)
-print("Start longitube :", slon)
-elat = input("End latitube :")
-elon = input("End longitube :")
-erange = input("range(about 10 km per degree) :")
-
-#slat = float(slat)
-#slon = float(slon)
-elat = float(elat)
-elon = float(elon)
-erange = float(erange)
-lnc,sec = Straight(slon,slat,elon,elat)
+#TwoWave model
+def TwoWave(d,ht,hr,f,r,outd):
+    lam = 3*10**2/f
+    e0 = math.sqrt(d**2 + (ht - hr)**2)
+    d2 = math.sqrt(d**2 + (ht + hr)**2)
+    q = 2 * math.pi * (e0 - d2) / lam
+    atan = math.atan(d/(ht + hr))
+    angle = atan * 180 / math.pi
+    cos = math.cos((90 - angle) * math.pi / 180)
+    sin = math.sin((90 - angle) * math.pi / 180)
+    R = (sin - math.sqrt(r - cos**2))/(sin + math.sqrt(r - cos**2))
+    g = (lam/4/math.pi)**2 * ( (1/e0 + R * math.cos(q)/d2)**2 + (R * math.sin(q)/d2)**2)
+    gain = 10 * math.log10(g) + outd
+    return gain
 
 
-#df = pd.read_csv('lfour_20190821-20190822.csv' ,encoding="utf-8_sig")
-#df = pd.read_csv(filename ,encoding="utf-8_sig")
-#print(df.columns)
-#print(df[' lat'])
 # pythonフォルダ内にあるcsvファイルの一覧を取得
 files = glob.glob("*.csv")
 print(files)
-# 全てのCSVファイルを読み込み、dfに入れる（keyはファイル名）
+# 全てのCSVファイルを読み込み、dictに入れる（keyはファイル名）
 list = []
 for file in files:
     list.append(pd.read_csv(file,encoding="utf-8_sig"))
 
 df = concat(list, sort=False)
 
-x = df[' lat']
-y = df[' lon']
-tnt = df[(df[' lat'] > 34) & (df[' lat'] < 34.5) & (df[' lon'] > 132) & (df[' lon'] < 134)&(abs(lnc*df[' lon']-1*df[' lat']+sec)/(lnc**2+(-1)**2)**(1/2)<= erange)]
-xt = tnt[' lat']
-yt = tnt[' lon']
-rt=tnt[' rssi']
+#学校の経緯度(固定値とする)
+slon = 132.3443
+slat = 34.369671
+print("Start longitude :", slon)
+print("Start latitude :", slat)
+#直線からの範囲
+erange = input("range(about 10 km per degree) :")
+erange = float(erange)
 
-#図１
-plt.subplot(1, 2, 1)
-plt.ylabel("latitude")
-plt.xlabel("longitude")
-plt.scatter(slon, slat, alpha=1, color="Black", linewidths="1")
-plt.scatter(yt, xt, alpha=0.1, color="Blue", linewidths="1")
-y2 = (lnc * yt) + sec
-plt.plot(yt,y2)
+#print(df.columns)
 
-d = []
-lat1 = 34.369598
-lon1 = 132.344159
-for (xt,yt) in zip(xt, yt):
-    distance = vincenty_inverse(lat1, lon1, xt, yt, 1)
-    d.append(distance)
+#device name(e0,d3,d4,d6)
+df = df[ (df['devid']=='000015e0') | (df['devid']=='000015d3') | (df['devid']=='000015d6') | (df['devid']=='000015d4') ]
+print("numbers",len(df))
+xdata = df[' lon']
+ydata = df[' lat']
 
-#図２
-plt.subplot(1, 2, 2)
-plt.xlabel("distance")
-plt.ylabel("rssi")
-plt.scatter(d, rt, alpha=0.1, color="Red", linewidths="1")
+def onclick(event):
+    print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
+          ('double' if event.dblclick else 'single', event.button,
+           event.x, event.y, event.xdata, event.ydata))
+    
+    if(event.button==3):#right click
+
+
+        elon = float(event.xdata)
+        elat = float(event.ydata)
+
+        a,b = Straight(slon,slat,elon,elat)
+        #範囲フィルタ
+        if slat>elat:
+            lat_max=slat
+            lat_min=elat
+        else:
+            lat_max=elat
+            lat_min=slat
+
+        if slon>elon:
+            lon_max=slon
+            lon_min=elon
+        else:
+            lon_max=elon
+            lon_min=slon
+
+        x = df[' lon']
+        y = df[' lat']
+        tnt = df[(df[' lon'] > lon_min) & (df[' lon'] < lon_max) & (df[' lat'] > lat_min) & (df[' lat'] < lat_max) & (abs(a*df[' lon']-1*df[' lat']+b)/(a**2+(-1)**2)**(1/2)<= erange)]
+
+        xt = tnt[' lon']
+        yt = tnt[' lat']
+        rt = tnt[' rssi']
+
+        #device name(e0,d3,d4,d6)
+        e0=tnt[tnt['devid']=='000015e0']
+        xt1 = e0[' lon']
+        yt1 = e0[' lat']
+        rt1 = e0[' rssi']
+
+        d3=tnt[tnt['devid']=='000015d3']
+        xt3 = d3[' lon']
+        yt3 = d3[' lat']
+        rt3 = d3[' rssi']
+
+        d4=tnt[tnt['devid']=='000015d4']
+        xt4 = d4[' lon']
+        yt4 = d4[' lat']
+        rt4 = d4[' rssi']
+
+        d6=tnt[tnt['devid']=='000015d6']
+        xt6 = d6[' lon']
+        yt6 = d6[' lat']
+        rt6 = d6[' rssi']
+
+
+
+        #図1
+        fig=plt.figure()
+        ax1=fig.add_subplot(1,2,1)
+        ax1.scatter(xt1,yt1,alpha=0.1,color="r",linewidths="1")
+        ax1.scatter(xt3,yt3,alpha=0.1,color="g",linewidths="1")
+        ax1.scatter(xt4,yt4,alpha=0.1,color="b",linewidths="1")
+        ax1.scatter(xt6,yt6,alpha=0.1,color="b",linewidths="1")
+        ax1.scatter(slon,slat,alpha=0.1,color="b",linewidths="1")
+        ax1.plot([slon,elon],[slat,elat])
+        ax1.set_title("("+str(elon)+" : "+str(elat)+")")
+        ax1.set_xlabel("longitude")
+        ax1.set_ylabel("latitude")
+
+        #図2
+        d = []
+        e0 = []
+        d3 = []
+        d4 = []
+        d6 = []
+
+        for (xt,yt) in zip(xt, yt):
+            distance = vincenty_inverse(slon, slat, xt, yt, 1)
+            d.append(distance)
+
+        #この下3つをfor(xt1,yt1)とすると元データのxt1,yt1が消えてしまうので注意
+        for (xt,yt) in zip(xt1, yt1):
+            distance1 = vincenty_inverse(slon, slat, xt, yt, 1)
+            e0.append(distance1)
+
+        for (xt,yt) in zip(xt3, yt3):
+            distance3 = vincenty_inverse(slon, slat, xt, yt, 1)
+            d3.append(distance3)
+            
+        for (xt,yt) in zip(xt4, yt4):
+            distance4 = vincenty_inverse(slon, slat, xt, yt, 1)
+            d4.append(distance4)
+
+        for (xt,yt) in zip(xt6, yt6):
+            distance6 = vincenty_inverse(slon, slat, xt, yt, 1)
+            d6.append(distance6)
+
+        ax2=fig.add_subplot(1,2,2)
+        ax2.scatter(e0,rt1,alpha=0.1,color="r",linewidths="1")
+        ax2.scatter(d3,rt3,alpha=0.1,color="g",linewidths="1")
+        ax2.scatter(d4,rt4,alpha=0.1,color="y",linewidths="1")
+        ax2.scatter(d6,rt6,alpha=0.1,color="b",linewidths="1")
+        ax2.set_xlabel("distance")
+        ax2.set_ylabel("rssi")
+        ax2.set_title("e0,d3,d4,d6 : "+str(len(e0+d3+d4+d6)))
+
+        #2波モデル適用
+        xx=np.arange(0,max(d),1)
+        yy=[]
+        for i in xx:
+            yy.append(TwoWave(i,56,1,920,4,10))
+        ax2.plot(xx,yy)
+
+        #e0
+        fig1=plt.figure()
+        ax3=fig1.add_subplot(1,2,1)
+        ax3.scatter(xt1,yt1,alpha=0.1,color="r",linewidths="1")
+        ax3.scatter(slon,slat,alpha=0.1,color="b",linewidths="1")
+        ax3.plot([slon,elon],[slat,elat])
+        ax3.set_title("e0:"+str(len(xt1)))
+        ax3.set_xlabel("longitude")
+        ax3.set_ylabel("latitude")
+        ax4=fig1.add_subplot(1,2,2)
+        ax4.scatter(e0,rt1,alpha=0.1,color="r",linewidths="1")
+        ax4.set_xlabel("distance")
+        ax4.set_ylabel("rssi")
+        ax4.plot(xx,yy)
+
+        #d3
+        fig3=plt.figure()
+        ax3=fig3.add_subplot(1,2,1)
+        ax3.scatter(xt3,yt3,alpha=0.1,color="g",linewidths="1")
+        ax3.scatter(slon,slat,alpha=0.1,color="b",linewidths="1")
+        ax3.plot([slon,elon],[slat,elat])
+        ax3.set_title("d3:"+str(len(xt3)))
+        ax3.set_xlabel("longitude")
+        ax3.set_ylabel("latitude")
+        ax4=fig3.add_subplot(1,2,2)
+        ax4.scatter(d3,rt3,alpha=0.1,color="g",linewidths="1")
+        ax4.set_xlabel("distance")
+        ax4.set_ylabel("rssi")
+        ax4.plot(xx,yy)
+
+        #d4
+        fig4=plt.figure()
+        ax3=fig4.add_subplot(1,2,1)
+        ax3.scatter(xt4,yt4,alpha=0.1,color="y",linewidths="1")
+        ax3.scatter(slon,slat,alpha=0.1,color="b",linewidths="1")
+        ax3.plot([slon,elon],[slat,elat])
+        ax3.set_title("d6:"+str(len(xt4)))
+        ax3.set_xlabel("longitude")
+        ax3.set_ylabel("latitude")
+        ax4=fig4.add_subplot(1,2,2)
+        ax4.scatter(d6,rt6,alpha=0.1,color="y",linewidths="1")
+        ax4.set_xlabel("distance")
+        ax4.set_ylabel("rssi")
+        ax4.plot(xx,yy)
+
+        #d6
+        fig6=plt.figure()
+        ax3=fig6.add_subplot(1,2,1)
+        ax3.scatter(xt6,yt6,alpha=0.1,color="b",linewidths="1")
+        ax3.scatter(slon,slat,alpha=0.1,color="b",linewidths="1")
+        ax3.plot([slon,elon],[slat,elat])
+        ax3.set_title("d6:"+str(len(xt6)))
+        ax3.set_xlabel("longitude")
+        ax3.set_ylabel("latitude")
+        ax4=fig6.add_subplot(1,2,2)
+        ax4.scatter(d6,rt6,alpha=0.1,color="b",linewidths="1")
+        ax4.set_xlabel("distance")
+        ax4.set_ylabel("rssi")
+        ax4.plot(xx,yy)
+
+        #rssi
+        #e0
+        figx=plt.figure()
+        ax1=figx.add_subplot(1,4,1)
+        ax1.scatter(e0,rt1,alpha=0.1,color="r",linewidths="1")
+        ax1.set_xlabel("distance")
+        ax1.set_ylabel("rssi")
+        ax1.plot(xx,yy)
+        ax1.set_title("e0:"+str(len(e0)))
+        #d3
+        ax3=figx.add_subplot(1,4,2)
+        ax3.scatter(d3,rt3,alpha=0.1,color="g",linewidths="1")
+        ax3.set_xlabel("distance")
+        ax3.set_ylabel("rssi")
+        ax3.plot(xx,yy)
+        ax3.set_title("d3:"+str(len(d3)))
+        #d4
+        ax4=figx.add_subplot(1,4,3)
+        ax4.scatter(d4,rt4,alpha=0.1,color="y",linewidths="1")
+        ax4.set_xlabel("distance")
+        ax4.set_ylabel("rssi")
+        ax4.plot(xx,yy)
+        ax4.set_title("d4:"+str(len(d4)))
+        #d6
+        ax6=figx.add_subplot(1,4,4)
+        ax6.scatter(d6,rt6,alpha=0.1,color="b",linewidths="1")
+        ax6.set_xlabel("distance")
+        ax6.set_ylabel("rssi")
+        ax6.plot(xx,yy)
+        ax6.set_title("d6:"+str(len(d6)))
+
+
+        #graph show
+        plt.show()
+    
+figb = plt.figure()
+ax = figb.add_subplot(1, 1, 1)
+ax.scatter(slon,slat,alpha=1,color="r",linewidths="2")
+ax.scatter(xdata,ydata,alpha=0.1,color="b",linewidths="1")
+figb.canvas.mpl_connect("button_press_event", onclick)
 plt.show()
